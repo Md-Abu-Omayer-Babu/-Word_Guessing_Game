@@ -35,9 +35,5 @@ site/
 .env.*
 .env.local
 
-############################
-# Project specific
-############################
-# Keep assets tracked; do not ignore game assets
-# word_guessing_game/assets/
-
+# skip lagecy code
+Lagecy_Code.py

@@ -10,7 +10,8 @@ word_guessing_game/
 ├── assets/
 │   ├── backgrounds/
 │   ├── buttons/
-│   ├── hangman_images/
+│   ├── hangman_images/   # preferred
+│   ├── mouse_images/     # legacy folder also supported
 │   └── sounds/
 │
 ├── game/
@@ -41,7 +42,7 @@ Place your files here (filenames expected by default):
 
 - Backgrounds: `assets/backgrounds/background_image.png`
 - Buttons: `assets/buttons/beginner_image.png`, `intermediate_image.png`, `advanced_image.png`, `play_image.png`
-- Hangman frames: `assets/hangman_images/img0.png` ... `img51.png`
+- Hangman frames: preferred `assets/hangman_images/img0.png` ... `img51.png` (falls back to `assets/mouse_images/` if missing)
 - Sounds: `assets/sounds/correct_guess.wav`, `wrong_guess.wav`, `win_sound.mp3`, `game_over.wav`
 
 If an asset is missing, the game will still run using placeholders and muted sounds.
@@ -53,7 +54,7 @@ Install dependencies:
 ```powershell
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r word_guessing_game\requirements.txt
+pip install -r ..\requirements.txt
 ```
 
 ## Run
@@ -61,7 +62,7 @@ pip install -r word_guessing_game\requirements.txt
 From the repo root:
 
 ```powershell
-python -m word_guessing_game.game.app
+python -m word_guessing_game
 ```
 
 Or run the module directly:
@@ -78,4 +79,6 @@ python word_guessing_game\game\app.py
 
 ## Notes
 
+- UI matches the legacy look: list-style labels and button fonts/placements.
 - Tkinter ships with Python. Pygame is required only for sounds; if it fails to initialize, the game runs without audio.
+- Letter buttons use the `Pacifico` font; if it's not installed, Tk will use a fallback.
