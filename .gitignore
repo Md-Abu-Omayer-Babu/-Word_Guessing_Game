@@ -35,5 +35,6 @@ site/
 .env.*
 .env.local
 
-# skip lagecy code
-Lagecy_Code.py
+# skip legacy code
+/Lagecy_Code.py
+/word_guessing_game/_archive/
