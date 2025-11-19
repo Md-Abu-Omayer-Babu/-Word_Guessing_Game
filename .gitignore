@@ -1,0 +1,43 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+pip-wheel-metadata/
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+.venv/
+venv/
+ENV/
+env/
+pyvenv.cfg
+.python-version
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+build/
+dist/
+site/
+
+.env
+.env.*
+.env.local
+
+############################
+# Project specific
+############################
+# Keep assets tracked; do not ignore game assets
+# word_guessing_game/assets/
+
