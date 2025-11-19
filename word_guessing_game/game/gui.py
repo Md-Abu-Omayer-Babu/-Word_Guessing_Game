@@ -22,14 +22,15 @@ from .game_logic import GameLogic
 from .sounds import SoundManager
 
 
-def _load_image(path: Path, size: Optional[tuple[int, int]] = None) -> Optional[ImageTk.PhotoImage]:
+def _load_image(path: Path, size: Optional[tuple[int, int]] = None, master: Optional[tk.Misc] = None) -> Optional[ImageTk.PhotoImage]:
     if not path.exists():
         return None
     try:
-        img = Image.open(path)
+        with Image.open(path) as im:
+            img = im.copy()
         if size:
             img = img.resize(size)
-        return ImageTk.PhotoImage(img)
+        return ImageTk.PhotoImage(img, master=master)
     except Exception:
         return None
 
@@ -64,6 +65,19 @@ class GameGUI:
         self.lives_label: Optional[tk.Label] = None
         self.buttons: Dict[str, tk.Button] = {}
 
+        # Base design size for responsive scaling
+        self.BASE_W: int = 950
+        self.BASE_H: int = 630
+
+        # Difficulty window assets and widgets for responsive layout
+        self._diff_bg_path: Optional[Path] = None
+        self._diff_bg_label: Optional[tk.Label] = None
+        self._diff_btn_paths: Dict[str, Path] = {}
+        self._diff_btn_sizes: Dict[str, tuple[int, int]] = {}
+        self._diff_btn_widgets: Dict[str, ttk.Button] = {}
+        self._diff_layout_job: Optional[str] = None
+        self._game_layout_job: Optional[str] = None
+
     def start(self) -> None:
         self._show_difficulty_window()
 
@@ -71,7 +85,7 @@ class GameGUI:
     def _show_difficulty_window(self) -> None:
         self.difficulty_root = tk.Tk()
         self.difficulty_root.title("Word Guessing Game")
-        self.difficulty_root.geometry("950x630")
+        self.difficulty_root.geometry("850x630")
 
         bg = _load_image(BACKGROUNDS_DIR / "background_image.png")
         if bg:
@@ -144,19 +158,21 @@ class GameGUI:
     def _show_game_window(self, difficulty: str) -> None:
         self.game_root = tk.Tk()
         self.game_root.title("Word Guessing Game")
-        self.game_root.geometry("950x630")
+        self.game_root.geometry(f"{self.BASE_W}x{self.BASE_H}")
         self.game_root.resizable(True, True)
 
-        bg = _load_image(BACKGROUNDS_DIR / "background_image.png")
+        # Background
+        self._game_bg_path: Path = BACKGROUNDS_DIR / "background_image.png"
+        bg = _load_image(self._game_bg_path, master=self.game_root)
         if bg:
-            label = tk.Label(self.game_root, image=bg)
-            label.image = bg
-            label.place(x=0, y=0, relwidth=1, relheight=1)
+            self._game_bg_label = tk.Label(self.game_root, image=bg)
+            self._game_bg_label.image = bg
+            self._game_bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         self.logic = GameLogic(difficulty)
 
-        hint = tk.Label(self.game_root, text=self.logic.hint_text, font=("Verdana", 12, "bold"))
-        hint.pack(side="top")
+        self.hint_label = tk.Label(self.game_root, text=self.logic.hint_text, font=("Verdana", 12, "bold"))
+        self.hint_label.pack(side="top")
 
         # Hangman image
         self.hangman_index = initial_hangman_index(len(self.logic.word))
@@ -182,12 +198,25 @@ class GameGUI:
         self.buttons = {}
         self._populate_alpha_buttons()
 
+        # Initial responsive layout and bindings
+        self._layout_game_window()
+        self.game_root.bind("<Configure>", self._on_game_configure)
+
         self.game_root.mainloop()
 
     def _current_hangman_photo(self) -> ImageTk.PhotoImage:
+        # Scale hangman image relative to window size
         size = (600, 250)
+        if self.game_root:
+            try:
+                w = max(self.game_root.winfo_width(), 1)
+                h = max(self.game_root.winfo_height(), 1)
+                s = min(w / self.BASE_W, h / self.BASE_H)
+                size = (max(200, int(600 * s)), max(120, int(250 * s)))
+            except Exception:
+                pass
         if 0 <= self.hangman_index < len(self.hangman_images):
-            img = _load_image(self.hangman_images[self.hangman_index], size=size)
+            img = _load_image(self.hangman_images[self.hangman_index], size=size, master=self.game_root)
             if img is not None:
                 return img
         return _placeholder(size, "Hangman")
@@ -202,29 +231,32 @@ class GameGUI:
 
     def _populate_alpha_buttons(self) -> None:
         # Layout: 5 rows up to 26 letters, like original placements
-        xpos = 150
-        ypos = 370
-        col_w = 100
-        row_h = 50
-        per_row = 6
+        self._alpha_base = {
+            "x0": 150,
+            "y0": 370,
+            "col_w": 100,
+            "row_h": 50,
+            "btn_w": 100,
+            "btn_h": 50,
+            "per_row": 6,
+        }
 
         row_breaks = {6, 12, 18, 24}
         c = 0
         for letter in ALPHABET:
-            if c in row_breaks:
-                ypos += 50
-                xpos = 150
             btn = tk.Button(
                 self.game_root,
                 text=letter.upper(),
-                # Match legacy font used in original code
                 font=("Pacifico", 16),
                 command=lambda l=letter: self._on_letter(l),
             )
-            btn.place(height=50, width=100, x=xpos, y=ypos)
+            # Initially place at base; will be repositioned on resize
+            btn.place(height=self._alpha_base["btn_h"], width=self._alpha_base["btn_w"], x=self._alpha_base["x0"], y=self._alpha_base["y0"]) 
             self.buttons[letter] = btn
-            xpos += col_w
             c += 1
+
+        # Perform an initial layout pass
+        self._layout_alpha_buttons()
 
     def _on_letter(self, letter: str) -> None:
         if not self.logic:
@@ -271,6 +303,170 @@ class GameGUI:
         else:
             # Exit application
             pass
+
+    # Responsive layout helpers
+    def _scale_factor(self, root: tk.Tk) -> float:
+        try:
+            w = max(root.winfo_width(), 1)
+            h = max(root.winfo_height(), 1)
+            return max(0.5, min(w / self.BASE_W, h / self.BASE_H))
+        except Exception:
+            return 1.0
+
+    def _layout_difficulty_window(self) -> None:
+        if not self.difficulty_root:
+            return
+        s = self._scale_factor(self.difficulty_root)
+
+        # Background fit to window
+        if self._diff_bg_label and self._diff_bg_path and self.difficulty_root:
+            try:
+                w = max(self.difficulty_root.winfo_width(), 1)
+                h = max(self.difficulty_root.winfo_height(), 1)
+                tkimg = _load_image(self._diff_bg_path, (w, h), master=self.difficulty_root)
+                if tkimg:
+                    self._diff_bg_label.configure(image=tkimg)
+                    self._diff_bg_label.image = tkimg
+            except Exception:
+                pass
+
+        # Centered vertical stack layout
+        w = max(self.difficulty_root.winfo_width(), 1)
+        h = max(self.difficulty_root.winfo_height(), 1)
+
+        order = ["beginner", "intermediate", "advanced", "play"]
+        gap = max(10, int(70 * s))
+
+        # Compute scaled sizes and total height
+        scaled: dict[str, tuple[int, int]] = {}
+        total_h = 0
+        for key in order:
+            size = self._diff_btn_sizes.get(key, (200, 60))
+            bw = max(120, int(size[0] * s))
+            bh = max(44, int(size[1] * s))
+            scaled[key] = (bw, bh)
+            total_h += bh
+        total_h += gap * (len(order) - 1)
+
+        top_y = max(20, (h - total_h) // 2)
+
+        # Place centered
+        y = top_y
+        for key in order:
+            btn = self._diff_btn_widgets.get(key)
+            if not btn:
+                continue
+            bw, bh = scaled[key]
+            x = max(0, (w - bw) // 2)
+            # Scale image each time to stay crisp
+            path = self._diff_btn_paths.get(key)
+            if path and path.exists():
+                try:
+                    img = _load_image(path, (bw, bh), master=self.difficulty_root)
+                    if img:
+                        btn.configure(image=img)
+                        btn.image = img
+                except Exception:
+                    pass
+            btn.place(x=x, y=y, width=bw, height=bh)
+            y += bh + gap
+
+    def _layout_alpha_buttons(self) -> None:
+        if not self.game_root:
+            return
+        s = self._scale_factor(self.game_root)
+        x0 = int(self._alpha_base["x0"] * s)
+        y0 = int(self._alpha_base["y0"] * s)
+        col_w = int(self._alpha_base["col_w"] * s)
+        row_h = int(self._alpha_base["row_h"] * s)
+        bw = max(50, int(self._alpha_base["btn_w"] * s))
+        bh = max(30, int(self._alpha_base["btn_h"] * s))
+
+        # Place in rows of per_row
+        per_row = self._alpha_base["per_row"]
+        c = 0
+        row = 0
+        col = 0
+        for letter in ALPHABET:
+            btn = self.buttons.get(letter)
+            if not btn:
+                continue
+            if c and c % per_row == 0:
+                row += 1
+                col = 0
+            x = x0 + col * col_w
+            y = y0 + row * row_h
+            btn.place(x=x, y=y, width=bw, height=bh)
+            try:
+                btn.configure(font=("Pacifico", max(10, int(16 * s))))
+            except Exception:
+                pass
+            col += 1
+            c += 1
+
+    def _layout_game_window(self) -> None:
+        if not self.game_root:
+            return
+        s = self._scale_factor(self.game_root)
+
+        # Background resize
+        try:
+            w = max(self.game_root.winfo_width(), 1)
+            h = max(self.game_root.winfo_height(), 1)
+            if hasattr(self, "_game_bg_label") and self._game_bg_label is not None:
+                tkimg = _load_image(self._game_bg_path, (w, h), master=self.game_root)
+                if tkimg:
+                    self._game_bg_label.configure(image=tkimg)
+                    self._game_bg_label.image = tkimg
+        except Exception:
+            pass
+
+        # Scale fonts
+        try:
+            self.hint_label.configure(font=("Verdana", max(8, int(12 * s)), "bold"))
+            self.board_label.configure(font=("Verdana", max(16, int(30 * s)), "bold"))
+            self.guesses_label.configure(font=("Verdana", max(8, int(10 * s)), "bold"))
+            self.lives_label.configure(font=("Verdana", max(8, int(10 * s)), "bold"))
+        except Exception:
+            pass
+
+        # Reposition meta labels (keep relative to base)
+        gx = int(100 * s)
+        gy = int(300 * s)
+        lx = int(100 * s)
+        ly = int(330 * s)
+        self.guesses_label.place(x=gx, y=gy)
+        self.lives_label.place(x=lx, y=ly)
+
+        # Resize hangman image
+        if self.hangman_label:
+            img = self._current_hangman_photo()
+            self.hangman_label.configure(image=img)
+            self.hangman_label.image = img
+
+        # Layout alphabet
+        self._layout_alpha_buttons()
+
+    # Debounced configure handlers
+    def _on_diff_configure(self, event) -> None:
+        if not self.difficulty_root:
+            return
+        if self._diff_layout_job:
+            try:
+                self.difficulty_root.after_cancel(self._diff_layout_job)
+            except Exception:
+                pass
+        self._diff_layout_job = self.difficulty_root.after(60, self._layout_difficulty_window)
+
+    def _on_game_configure(self, event) -> None:
+        if not self.game_root:
+            return
+        if self._game_layout_job:
+            try:
+                self.game_root.after_cancel(self._game_layout_job)
+            except Exception:
+                pass
+        self._game_layout_job = self.game_root.after(60, self._layout_game_window)
 
     # Helpers to mimic legacy label text style
     def _legacy_board_text(self) -> str:

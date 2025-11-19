@@ -35,6 +35,7 @@ word_guessing_game/
 - Sound effects for correct, wrong, win, and game over
 - Replay prompt on win/lose
 - Graceful fallbacks if assets or audio are missing
+- Responsive UI: images, fonts, and buttons scale on resize
 
 ## Assets
 
